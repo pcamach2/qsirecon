@@ -8,7 +8,7 @@ PyAFQ tractometry and visualization
 
 import AFQ
 import AFQ.utils.bin as afb
-import AFQ.definitions.image.ImageFile as afqimage
+from AFQ.definitions.image import ImageFile
 import nipype.interfaces.utility as niu
 import nipype.pipeline.engine as pe
 
@@ -50,7 +50,7 @@ def _parse_qsirecon_params_dict(params_dict):
     return kwargs
 
 
-def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}):
+def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}, scalar_files=[]):
     """Run PyAFQ on some qsirecon outputs
 
     Inputs
@@ -63,12 +63,13 @@ def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}):
 
     """
     inputnode = pe.Node(
-        niu.IdentityInterface(fields=recon_workflow_input_fields + ["tck_file"]), name="inputnode"
+        niu.IdentityInterface(fields=recon_workflow_input_fields + ["tck_file", "scalar_files"]), 
+        name="inputnode"
     )
     outputnode = pe.Node(
         niu.IdentityInterface(fields=["afq_dir", "recon_scalars"]), name="outputnode"
     )
-    scalar_files = params.scalar_files
+    scalar_files = params.get("scalar_files")
     outputnode.inputs.recon_scalars = []
     omp_nthreads = config.nipype.omp_nthreads
     kwargs = _parse_qsirecon_params_dict(params)
@@ -93,13 +94,14 @@ def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}):
     if params.get("use_qsirecon_scalars", True):
         # Process each scalar file
         for scalar_file in scalar_files:
+            scalar_object = ImageFile(scalar_file)
             scalar_inputnode = pe.Node(
-                niu.IdentityInterface(fields=["scalar_file"]), 
+                niu.IdentityInterface(fields=["scalar_object"]), 
                 name=f"scalar_inputnode_{scalar_file}"
             )
-            scalar_inputnode.inputs.scalar_file = scalar_file
+            scalar_inputnode.inputs.scalar_object = scalar_object
             workflow.connect([
-                (scalar_inputnode, run_afq, [('scalar_file', 'scalar_file')]),
+                (scalar_inputnode, run_afq, [('scalar_object', 'scalar_file')]),
             ])  # fmt:skip
     
     if qsirecon_suffix:
