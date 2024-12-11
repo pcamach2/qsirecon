@@ -8,6 +8,7 @@ PyAFQ tractometry and visualization
 
 import AFQ
 import AFQ.utils.bin as afb
+import AFQ.definitions.image.ImageFile as afqimage
 import nipype.interfaces.utility as niu
 import nipype.pipeline.engine as pe
 
@@ -67,6 +68,7 @@ def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}):
     outputnode = pe.Node(
         niu.IdentityInterface(fields=["afq_dir", "recon_scalars"]), name="outputnode"
     )
+    scalar_files = params.scalar_files
     outputnode.inputs.recon_scalars = []
     omp_nthreads = config.nipype.omp_nthreads
     kwargs = _parse_qsirecon_params_dict(params)
@@ -88,6 +90,18 @@ def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}):
             ('template_to_acpc_xfm', 'itk_file')]),
         (run_afq, outputnode, [('afq_dir', 'afq_dir')])
     ])  # fmt:skip
+    if params.get("use_qsirecon_scalars", True):
+        # Process each scalar file
+        for scalar_file in scalar_files:
+            scalar_inputnode = pe.Node(
+                niu.IdentityInterface(fields=["scalar_file"]), 
+                name=f"scalar_inputnode_{scalar_file}"
+            )
+            scalar_inputnode.inputs.scalar_file = scalar_file
+            workflow.connect([
+                (scalar_inputnode, run_afq, [('scalar_file', 'scalar_file')]),
+            ])  # fmt:skip
+    
     if qsirecon_suffix:
         # Save the output in the outputs directory
         ds_afq = pe.Node(
@@ -101,10 +115,10 @@ def init_pyafq_wf(inputs_dict, name="afq", qsirecon_suffix="", params={}):
             run_without_submitting=True,
         )
         workflow.connect(run_afq, "afq_dir", ds_afq, "in_file")
-
+   
     workflow.__desc__ = (
         f"PyAFQ run on version {AFQ.__version__}"
         f" with the following configuration: {str(kwargs)}"
     )
-
+    
     return clean_datasinks(workflow, qsirecon_suffix)
